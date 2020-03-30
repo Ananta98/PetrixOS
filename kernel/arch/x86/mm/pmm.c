@@ -5,7 +5,7 @@
 #include <arch/x86/cpu/multiboot.h>
 
 #define INDEX_BIT(address) (address / 32)
-#define OFFSET_BIT(address) (address / 32)
+#define OFFSET_BIT(address) (address % 32)
 
 uintptr_t *pmm_bitmap = NULL;
 uint32_t used_blocks = 0;

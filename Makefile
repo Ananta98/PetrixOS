@@ -34,18 +34,18 @@ PetrixOS.bin: linker.ld  $(KERNEL_OBJS)
 
 PetrixOS.iso: PetrixOS.bin
 	mkdir -p iso/boot/grub
-	cp PetraOS.bin iso/boot/PetraOS.bin
+	cp PetrixOS.bin iso/boot/PetrixOS.bin
 	echo 'set timeout=0'> iso/boot/grub/grub.cfg
 	echo 'set default=0' >> iso/boot/grub/grub.cfg
 	echo ''
-	echo 'menuentry "PetraOS" {' >> iso/boot/grub/grub.cfg
-	echo '	multiboot /boot/PetraOS.bin' >> iso/boot/grub/grub.cfg
+	echo 'menuentry "PetrixOS" {' >> iso/boot/grub/grub.cfg
+	echo '	multiboot /boot/PetrixOS.bin' >> iso/boot/grub/grub.cfg
 	echo '  boot' >> iso/boot/grub/grub.cfg
 	echo '}' >> iso/boot/grub/grub.cfg
-	grub-mkrescue -o PetraOS.iso iso 
+	grub-mkrescue -o PetrixOS.iso iso 
 	rm -rf iso
 run:
-	qemu-system-i386 -cdrom PetraOS.iso	
+	qemu-system-i386 -cdrom PetrixOS.iso	
 
 clean:
 	rm kernel/arch/x86/cpu/*\.o
