@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "gdt.h": "c",
+        "mm.h": "c",
+        "io.h": "c"
+    }
+}
