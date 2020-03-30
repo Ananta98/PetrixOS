@@ -29,10 +29,10 @@ kernel/arch/x86/mm/%.o : kernel/arch/x86/mm/%.c
 kernel/drivers/%.o : kernel/drivers/%.c
 	$(GCC) -c $< -o $@ $(GCCPARAMS)
 
-PetraOS.bin: linker.ld  $(KERNEL_OBJS)
+PetrixOS.bin: linker.ld  $(KERNEL_OBJS)
 	$(GCC) -T $< -o $@ $(GCCLINKING) $(KERNEL_OBJS)
 
-PetraOS.iso: PetraOS.bin
+PetrixOS.iso: PetrixOS.bin
 	mkdir -p iso/boot/grub
 	cp PetraOS.bin iso/boot/PetraOS.bin
 	echo 'set timeout=0'> iso/boot/grub/grub.cfg
