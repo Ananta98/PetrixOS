@@ -47,33 +47,19 @@ loader:
 	jmp ecx
 
 higher_half_loader:
-	invlpg [0]
-
-	mov eax,cr0
-	or al, 1
-	mov cr0,eax
-
 	mov esp , stack_top
+
+	push eax
+	add ebx, 0xC0000000
 	push ebx
+	
+	cli
 	
 	extern kmain
 	call kmain
-.hang:	hlt
-		jmp .hang
+
+	cli
+.hang:	
+	hlt
+	jmp .hang
 .end:
-
-
-global load_gdt
-load_gdt:
-	mov eax, [esp + 4]
-	lgdt [eax]
-	mov ax, 0x10
-	mov cs, ax
-	mov ds, ax
-	mov es, ax
-	mov fs, ax
-	mov gs, ax
-	mov ss, ax
-	jmp 0x08:.flush
-.flush
-	ret

@@ -1,7 +1,7 @@
-#include <arch/x86/mm/mm.h>
-#include <arch/x86/mm/pmm.h>
 #include <lib/kstdio.h>
 #include <lib/kstdlib.h>
+#include <arch/x86/mm/mm.h>
+#include <arch/x86/mm/pmm.h>
 #include <arch/x86/cpu/multiboot.h>
 
 #define INDEX_BIT(address) (address / 32)
@@ -10,6 +10,10 @@
 uintptr_t *pmm_bitmap = NULL;
 uint32_t used_blocks = 0;
 uint32_t total_blocks = 0;
+
+uint32_t get_free_blocks() {
+    return total_blocks - used_blocks;
+}
  
 void set_bit(uintptr_t address) {
     size_t index  = INDEX_BIT(address);
@@ -27,13 +31,12 @@ uintptr_t first_bit() {
     for (uint32_t i = 0; i < total_blocks / 32;  i++) {
         if (pmm_bitmap[i] != 0xFFFFFFFF) {
             for (uint32_t j = 0; j < 32; j++) {
-                int mask = 1 << j;
-                if (!(pmm_bitmap[j] & mask))
-                    return i * 32 + j;
+                if (!(pmm_bitmap[i] & (1 << j))) 
+                    return i * 32 + j;                
             }
         }
     }
-    return -1;
+    return 0;
 }
 
 uintptr_t more_first_bit(uint32_t count) {
@@ -41,7 +44,7 @@ uintptr_t more_first_bit(uint32_t count) {
     int starting_block_bit = -1;
     int starting_block = -1;
     
-    for (uint32_t i = 0; i < total_blocks; i++) {
+    for (uint32_t i = 0; i < total_blocks / 32; i++) {
         if (pmm_bitmap[i] == 0xFFFFFFFF) {
             cur_num_block = 0;
             continue;    
@@ -65,33 +68,36 @@ uintptr_t more_first_bit(uint32_t count) {
     return -1;
 }
 
-void allocate_region(uintptr_t base, size_t size) {
+void set_region_free(uintptr_t base, size_t size) {
     int align = base / PHYS_BLOCK_SIZE;
-    int blocks = size /PHYS_BLOCK_SIZE;
+    int blocks = size / PHYS_BLOCK_SIZE;
     for (int j = 0; j < blocks; j++) {
-        set_bit(align++);
+        unset_bit(align++);
         used_blocks--;
     }
     set_bit(0);
 }
 
-void deallocate_region(uintptr_t base, size_t size) {
+void set_region_used(uintptr_t base, size_t size) {
     int align = base / PHYS_BLOCK_SIZE;
     int blocks = size / PHYS_BLOCK_SIZE;
     for (int j = 0; j < blocks; j++) {
-        unset_bit(align++);
+        set_bit(align++);
         used_blocks++;
     }
     set_bit(0);
 }
 
 void *allocate_pmm() {
-    if (total_blocks - used_blocks == 0)
+    if (get_free_blocks() <= 0){
+        kprintf("Physical memory not enough\n");
         return NULL;
-        
+    }
     uintptr_t frame = first_bit();  
-    if ((intptr_t)frame == -1)
+    if (frame == 0){
+        kprintf("Physical memory not enough\n");
         return NULL;
+    }
     set_bit(frame);
     used_blocks++;
     uintptr_t address = frame * PHYS_BLOCK_SIZE;
@@ -107,34 +113,53 @@ void deallocate_pmm(uintptr_t address) {
 void *allocate_more_pmm(size_t count_blocks){
     if (count_blocks == 0)
         return NULL;
-    if (total_blocks - used_blocks == 0)
+    if (get_free_blocks() <= 0){
+        kprintf("Physical memory not enough\n");
         return NULL;
-    uintptr_t frame = first_bit();  
-    if ((intptr_t)frame == -1) 
+    }
+    uintptr_t frame = more_first_bit(count_blocks);  
+    if (frame == 0) 
         return NULL;
     for (uint32_t i = 0; i < count_blocks; i++) {
-        set_bit(frame);
+        set_bit(frame + i);
         used_blocks--;
     }
     uintptr_t address = frame * PHYS_BLOCK_SIZE;
     return (void*)address;
 }
 
+uint32_t get_bitmap_size() {
+    return total_blocks / PHYS_BLOCK_SIZE / PHYS_BLOCKS_PER_BYTE;
+}
+
 void initialize_pmm(multiboot_info_t *multiboot_info) {
-    uint32_t phys_mem_size = multiboot_info->mem_lower + multiboot_info->mem_upper + 1024;
+    uint32_t available = 0;
+    uint32_t unavailable = 0;
+    uint32_t phys_mem_size = multiboot_info->mem_lower + multiboot_info->mem_upper;
     total_blocks = (phys_mem_size * 1024) / PHYS_BLOCK_SIZE;
     used_blocks = total_blocks;
-    pmm_bitmap = (uint32_t*)PHYS_END;
-    memset(pmm_bitmap,0xFF,total_blocks / PHYS_BLOCKS_PER_BYTE);
-    kprintf("Total Blocks : 0x%x\n",total_blocks);
-    for (multiboot_memory_map_t * mmap = (multiboot_memory_map_t *) multiboot_info->mmap_addr;
-        (unsigned long) mmap < multiboot_info->mmap_addr + multiboot_info->mmap_length;
-        mmap = (multiboot_memory_map_t *) ((unsigned long) mmap + mmap->size + sizeof (mmap->size))) {
-        if (mmap->type == MULTIBOOT_MEMORY_AVAILABLE) 
-            allocate_region(mmap->base_addr_high + mmap->base_addr_low,mmap->size);
+    pmm_bitmap = (uint32_t*)VIRT_END;
+    memset(pmm_bitmap, 0xFF, total_blocks / PHYS_BLOCKS_PER_BYTE);
+     for (multiboot_memory_map_t *mmap = (multiboot_memory_map_t *) PHYS_TO_VIRT(multiboot_info->mmap_addr);
+           (unsigned long) mmap < PHYS_TO_VIRT(multiboot_info->mmap_addr) + multiboot_info->mmap_length;
+           mmap = (multiboot_memory_map_t *) ((uint32_t) mmap + mmap->size + sizeof (mmap->size))) {
+            kprintf (" size = 0x%x, base_addr_low = 0x%x, base_addr_high = 0x%x"
+            " length_low = 0x%x, length_high = 0x%x type = 0x%x\n",
+            (unsigned) mmap->size,
+            (unsigned) (mmap->base_addr_low & 0xffffffff),
+            (unsigned) (mmap->base_addr_high & 0xffffffff),
+            (unsigned) (mmap->len_low & 0xffffffff),
+            (unsigned) (mmap->len_low & 0xffffffff),
+            (unsigned) mmap->type);
+            if (mmap->type == MULTIBOOT_MEMORY_AVAILABLE)  {
+                available += (mmap->len_low + mmap->len_high);
+                set_region_free(mmap->base_addr_high + mmap->base_addr_low, mmap->len_high + mmap->len_low);
+            } else {
+                unavailable += (mmap->len_low + mmap->len_high);
+            }
     }
-    set_bit(0);
-    uintptr_t kernel_phys_start = (uintptr_t)PHYS_START;
-    uintptr_t kernel_phys_end = kernel_phys_start + (total_blocks / PHYS_BLOCKS_PER_BYTE);
-    kprintf("Physical Memory already installed. Physical Start : 0x%x Physical End : 0x%x\n",kernel_phys_start,kernel_phys_end);
+    set_region_used(0x0,VIRT_TO_PHYS(VIRT_END + total_blocks / PHYS_BLOCKS_PER_BYTE));
+    kprintf("[PMM] Memory stats: available: %dMiB\n", available >> 20);
+	kprintf("[PMM] unavailable: %dMiB\n", unavailable >> 10);
+
 }

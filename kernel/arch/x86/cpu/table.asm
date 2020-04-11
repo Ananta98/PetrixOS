@@ -24,6 +24,21 @@ IRQ 13, 45
 IRQ 14, 46
 IRQ 15, 47
 
+global load_gdt
+load_gdt:
+	mov eax, [esp + 4]
+	lgdt [eax]
+	mov ax, 0x10
+	mov cs, ax
+	mov ds, ax
+	mov es, ax
+	mov fs, ax
+	mov gs, ax
+	mov ss, ax
+	jmp 0x08:.flush
+.flush
+	ret
+
 [EXTERN irq_handler]
 irq_common_stub:
     pusha

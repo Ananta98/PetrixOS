@@ -18,6 +18,7 @@ void kmain(multiboot_info_t *multiboot_info) {
     disable_interrupt();
     initialize_timer(50);
     enable_interrupt();
-    initialize_pmm(multiboot_info);
+    initialize_pmm(multiboot_info);    
     initialize_vmm();
+    
 }

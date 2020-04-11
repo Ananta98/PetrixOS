@@ -6,7 +6,7 @@ SECTIONS {
     virt_start = .;
     phys_start = . - 0xC0000000;
 
-    .text ALIGN(0x1000) : AT(ADDR(.text)- 0xC0000000)
+    .text ALIGN(0x1000) : AT(ADDR(.text) - 0xC0000000)
     {
         *(.multiboot)
         *(.text)
@@ -22,7 +22,7 @@ SECTIONS {
         *(.data)
     }
 
-    .bss ALIGN(0x1000) : AT(ADDR(.bss)-0xC0000000)
+    .bss ALIGN(0x1000) : AT(ADDR(.bss) - 0xC0000000)
     {
         *(COMMON)
         *(.bss)
