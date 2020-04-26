@@ -19,7 +19,5 @@ paging_disable:
 
 [GLOBAL flush_tlb]
 flush_tlb:
-	cli
-    mov eax, [esp + 4]
-    invlpg [eax]
-	sti
+	mov eax, cr3
+    mov cr3, eax

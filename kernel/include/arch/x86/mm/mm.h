@@ -23,14 +23,10 @@ extern uintptr_t virt_end;
 #define PAGE_PER_TABLE  1024
 #define PAGE_SIZE       4096
 
-#define ONE_KB 1024
-#define ONE_MB 1024 * 1024
-#define ONE_GB 1024 * 1024 * 1024
-
 #define KERNEL_BASE_VIRT 0xC0000000
 
-#define PAGE_ROUND_UP(va,align) (va + PAGE_SIZE - 1) & ~align
-#define PAGE_ROUND_DOWN(va,align) va & ~align
+#define PAGE_ROUND_UP(a) (((a) + PAGE_SIZE) - 1) & ~(PAGE_SIZE - 1)
+#define PAGE_ROUND_DOWN(a) ((a) & ~(PAGE_SIZE - 1))
 
 #define PHYS_TO_VIRT(addr) ((addr) + KERNEL_BASE_VIRT)
 #define VIRT_TO_PHYS(addr) ((addr) - KERNEL_BASE_VIRT)

@@ -4,71 +4,102 @@
 #include <arch/x86/mm/pmm.h>
 #include <arch/x86/mm/vmm.h>
 
-extern void flush_tlb(uintptr_t address);
+extern void flush_tlb();
+extern void paging_enable();
+extern void switch_page_directory(uintptr_t);
+extern void *boot_page_directory;
 
-struct page_table_entry {
-   bool present : 1;
-   bool rw : 1;
-   bool user : 1;
-   bool accessed : 1;
-   bool dirty : 1;
-   uint32_t unused : 7;
-   uint32_t frame : 20;
-} __attribute__((packed));
+uintptr_t kpage_dir[1024];
 
-struct page_table {
-    struct page_table_entry entries[PAGE_PER_TABLE];
-}__attribute__((packed));
-
-struct page_directory_entry {
-    bool present : 1;
-    bool rw : 1;
-    bool user : 1;
-    bool accessed : 1;
-    bool dirty : 1;
-    uint32_t unused : 7;
-    uint32_t frame : 20;
-}__attribute__((packed));
-
-struct page_directory {
-    struct page_directory_entry entries[PAGE_PER_TABLE];
-}__attribute__((packed));
-
-void map_page(uintptr_t physaddr, uintptr_t virtualaddr, bool writable, bool kernel) {
-    unsigned long ptindex = (unsigned long)virtualaddr >> 22;
-    unsigned long pdindex = (unsigned long)(virtualaddr >> 12) & 0x3ff;
-    struct page_directory *page_directory = (struct page_directory*)(0xFFFFF000);
-    if (!(page_directory->entries[pdindex].present)) {
-        struct page_table *table = (struct page_table*)allocate_pmm();
-        memset(&page_directory->entries[pdindex],0,sizeof(struct page_directory));
-        if (table == NULL) return;
-        page_directory->entries[pdindex].present = true;
-        page_directory->entries[pdindex].rw = writable ? 1 : 0;
-        page_directory->entries[pdindex].user = kernel ? 0 : 1;
-        page_directory->entries[pdindex].frame = (uintptr_t)table >> 12;
-    }
-    struct page_table_entry *page_table = ((struct page_table_entry *)0xFFC00000) + (0x1000 * pdindex);
-    if (page_table[ptindex].present) {
-        kprintf("Mapped page\n");
-        return;
-    }
-    page_table[ptindex].present = true;
-    page_table[ptindex].rw = writable ? 1 : 0;
-    page_table[ptindex].user = kernel ? 0 : 1;
-    page_table[ptindex].frame = (uint32_t)physaddr / PAGE_SIZE;
-    flush_tlb(virtualaddr);
+void paging_invalidate_page(uintptr_t virt) {
+	asm volatile ("invlpg (%0)" :: "b"(virt) : "memory");
 }
 
-void unmap_page(uintptr_t physaddr, uintptr_t virtualaddr) {
+void map_page(uintptr_t virtaddr,uintptr_t physaddr) {
+    uintptr_t pdindex = virtaddr >> 22;
+    uintptr_t ptindex = virtaddr >> 12 & 0x03ff;
+    uint32_t flags = PAGE_P | PAGE_W;
 
+    if ((uint32_t)virtaddr < VIRT_START)
+        flags |= PAGE_U;
+    
+    uintptr_t *pd = (uintptr_t*)0xFFFFF000;
+    if (!(pd[pdindex] & PAGE_P)) {
+        uintptr_t tab_phys = allocate_pmm();
+        if (!tab_phys) {
+            kprintf("Memory not enough\n");
+            return;
+        }
+        memset(tab_phys,0,4096);
+        pd[pdindex] = tab_phys | flags;
+    }
+
+    uintptr_t *pt = (uintptr_t*)0xFFC00000 + (0x1000 * pdindex);
+    if (!(pt[ptindex] & PAGE_P)) {
+        if ((intptr_t)physaddr == -1) {
+            physaddr = allocate_pmm();
+            if (physaddr == NULL) {
+                kprintf("Memory not enough\n");
+                return;
+            }
+           memset((void*)physaddr,0,4096);
+        }
+    }
+    pt[ptindex] = ((unsigned long)physaddr) | flags;
+    flush_tlb();
 }
 
-// void *get_physaddr(uintptr_t virtualaddr) {
-//     unsigned long ptindex = (unsigned long)virtualaddr >> 22;
-//     unsigned long pdindex = (unsigned long)(virtualaddr >> 12) & 0x3ff;
-// }
+void unmap_page(uintptr_t virtaddr) {
+    uintptr_t pdindex = virtaddr >> 22;
+    uintptr_t ptindex = virtaddr >> 12 & 0x03ff;
 
-void initialize_vmm() {
-    kprintf("Initialize Paging\n");
+    uintptr_t *pd = (uintptr_t*)0xFFFFF000;
+    uintptr_t *pt = (uintptr_t*)0xFFC00000 + (0x1000 * pdindex);
 
+    if ((pd[pdindex] & PAGE_P)) {
+        if ((pt[ptindex] & PAGE_P)) {
+            uintptr_t page_phys = (pt[ptindex] & PAGE_MASK);
+            pt[ptindex] = 0;
+            paging_invalidate_page(page_phys);
+            deallocate_pmm((uintptr_t)page_phys);
+        }
+
+        for (uint32_t i = 0; i < 1024; i++) {
+            if (pt[i] & PAGE_P)
+                break;
+            if (i == 1023) {
+                uintptr_t tab_phys = (pd[pdindex] & PAGE_MASK);
+                pd[pdindex] = 0;
+                paging_invalidate_page(tab_phys);
+                deallocate_pmm(tab_phys);
+            }
+        }
+    }
+    flush_tlb();
+}
+
+
+void *get_physaddr(uintptr_t virtaddr,uintptr_t physaddr) {
+    uintptr_t pdindex = virtaddr >> 22;
+    uintptr_t ptindex = virtaddr >> 12 & 0x03ff;
+    uintptr_t *pt = (uintptr_t*)0xFFC00000 + (0x1000 * pdindex);
+    return (void *)((pt[ptindex] & ~0xFFF) + ((unsigned long)virtaddr & 0xFFF));
+}
+
+void initialize_vmm() { 
+    uintptr_t phys = (uintptr_t)allocate_pmm();
+    kpage_dir[1023] = (uintptr_t)kpage_dir | PAGE_P | PAGE_W;
+    kpage_dir[0] = phys | PAGE_W | PAGE_P;
+    flush_tlb();
+
+
+    // Page Fault
+    // uintptr_t *tab = (uintptr_t*)0xFFC00000;
+    // for (unsigned i = 0; i < 1024; i++){
+    //     tab[i] = (i * PAGE_SIZE) | PAGE_W | PAGE_P;
+    // }    
+    
+    kpage_dir[768] = kpage_dir[0];
+    kpage_dir[0] = 0;
+    flush_tlb();
 }

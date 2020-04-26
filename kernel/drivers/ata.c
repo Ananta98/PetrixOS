@@ -59,7 +59,6 @@ void ata_read_sector(uint16_t port_base, uint8_t master_or_slave, uint32_t lba, 
     }
 }
 
-
 void primary_ata_handler() {
     pic_ack(SECONDARY_ATA_IRQ);
 }
@@ -77,7 +76,7 @@ void initialize_ata() {
         return;
     }
 
-    check_drive(BASE_PRIMARY_ATA,  SEL_MASTER);
+    check_drive(BASE_PRIMARY_ATA,   SEL_MASTER);
     check_drive(BASE_PRIMARY_ATA,   SEL_SLAVE);
     check_drive(BASE_SECONDARY_ATA, SEL_MASTER);
     check_drive(BASE_SECONDARY_ATA, SEL_SLAVE);
