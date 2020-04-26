@@ -61,6 +61,7 @@ clean:
 	rm kernel/arch/x86/device/*\.o
 	rm kernel/arch/x86/mm/*\.o
 	rm kernel/drivers/*\.o
+	rm kernel/mm/*\.o
 	rm kernel/lib/*\.o
 	rm *\.iso
 	rm *\.bin

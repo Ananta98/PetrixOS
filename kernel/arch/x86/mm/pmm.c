@@ -2,7 +2,6 @@
 #include <lib/kstdlib.h>
 #include <arch/x86/mm/mm.h>
 #include <arch/x86/mm/pmm.h>
-#include <arch/x86/cpu/multiboot.h>
 
 #define INDEX_BIT(address) (address / 32)
 #define OFFSET_BIT(address) (address % 32)

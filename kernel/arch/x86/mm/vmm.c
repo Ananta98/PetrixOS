@@ -3,11 +3,11 @@
 #include <arch/x86/mm/mm.h>
 #include <arch/x86/mm/pmm.h>
 #include <arch/x86/mm/vmm.h>
+#include <arch/x86/cpu/interrupt.h>
 
 extern void flush_tlb();
 extern void paging_enable();
 extern void switch_page_directory(uintptr_t);
-extern void *boot_page_directory;
 
 uintptr_t kpage_dir[1024];
 
@@ -25,12 +25,12 @@ void map_page(uintptr_t virtaddr,uintptr_t physaddr) {
     
     uintptr_t *pd = (uintptr_t*)0xFFFFF000;
     if (!(pd[pdindex] & PAGE_P)) {
-        uintptr_t tab_phys = allocate_pmm();
+        uintptr_t tab_phys = (uintptr_t)allocate_pmm();
         if (!tab_phys) {
             kprintf("Memory not enough\n");
             return;
         }
-        memset(tab_phys,0,4096);
+        memset((void*)tab_phys,0,4096);
         pd[pdindex] = tab_phys | flags;
     }
 
@@ -79,21 +79,30 @@ void unmap_page(uintptr_t virtaddr) {
 }
 
 
-void *get_physaddr(uintptr_t virtaddr,uintptr_t physaddr) {
-    uintptr_t pdindex = virtaddr >> 22;
-    uintptr_t ptindex = virtaddr >> 12 & 0x03ff;
-    uintptr_t *pt = (uintptr_t*)0xFFC00000 + (0x1000 * pdindex);
-    return (void *)((pt[ptindex] & ~0xFFF) + ((unsigned long)virtaddr & 0xFFF));
+void page_fault(register_t *r) {
+    uint32_t cr2;
+    asm volatile ("mov %%cr2, %0" : "=r"(cr2));
+    kprintf("Page fault at 0x%x, faulting address 0x%x\n",r->eip,cr2);
+    kprintf("Error code : %x\n", r->err_code);
+    for(;;);
 }
 
+
+// void *get_physaddr(uintptr_t virtaddr,uintptr_t physaddr) {
+//     uintptr_t pdindex = virtaddr >> 22;
+//     uintptr_t ptindex = virtaddr >> 12 & 0x03ff;
+//     uintptr_t *pt = (uintptr_t*)0xFFC00000 + (0x1000 * pdindex);
+//     return (void *)((pt[ptindex] & ~0xFFF) + ((unsigned long)virtaddr & 0xFFF));
+// }
+
 void initialize_vmm() { 
+    isr_install_handler(14, page_fault);
+
     uintptr_t phys = (uintptr_t)allocate_pmm();
     kpage_dir[1023] = (uintptr_t)kpage_dir | PAGE_P | PAGE_W;
     kpage_dir[0] = phys | PAGE_W | PAGE_P;
     flush_tlb();
 
-
-    // Page Fault
     // uintptr_t *tab = (uintptr_t*)0xFFC00000;
     // for (unsigned i = 0; i < 1024; i++){
     //     tab[i] = (i * PAGE_SIZE) | PAGE_W | PAGE_P;

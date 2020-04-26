@@ -1,5 +1,5 @@
 #include <lib/types.h>
-#include <arch/x86/cpu/multiboot.h>
+#include <arch/x86/boot/multiboot.h>
 
 void *allocate_pmm();
 void deallocate_pmm(uintptr_t address);
