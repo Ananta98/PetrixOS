@@ -37,8 +37,8 @@ void map_page(uintptr_t virtaddr,uintptr_t physaddr) {
     uintptr_t *pt = (uintptr_t*)0xFFC00000 + (0x1000 * pdindex);
     if (!(pt[ptindex] & PAGE_P)) {
         if ((intptr_t)physaddr == -1) {
-            physaddr = allocate_pmm();
-            if (physaddr == NULL) {
+            physaddr = (uintptr_t)allocate_pmm();
+            if (!physaddr) {
                 kprintf("Memory not enough\n");
                 return;
             }
@@ -87,14 +87,6 @@ void page_fault(register_t *r) {
     for(;;);
 }
 
-
-// void *get_physaddr(uintptr_t virtaddr,uintptr_t physaddr) {
-//     uintptr_t pdindex = virtaddr >> 22;
-//     uintptr_t ptindex = virtaddr >> 12 & 0x03ff;
-//     uintptr_t *pt = (uintptr_t*)0xFFC00000 + (0x1000 * pdindex);
-//     return (void *)((pt[ptindex] & ~0xFFF) + ((unsigned long)virtaddr & 0xFFF));
-// }
-
 void initialize_vmm() { 
     isr_install_handler(14, page_fault);
 
@@ -103,6 +95,7 @@ void initialize_vmm() {
     kpage_dir[0] = phys | PAGE_W | PAGE_P;
     flush_tlb();
 
+    // Paging bug in this line of code
     // uintptr_t *tab = (uintptr_t*)0xFFC00000;
     // for (unsigned i = 0; i < 1024; i++){
     //     tab[i] = (i * PAGE_SIZE) | PAGE_W | PAGE_P;
@@ -111,4 +104,6 @@ void initialize_vmm() {
     kpage_dir[768] = kpage_dir[0];
     kpage_dir[0] = 0;
     flush_tlb();
+
+    paging_enable();
 }
