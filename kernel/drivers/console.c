@@ -1,4 +1,4 @@
-#include <arch/x86/cpu/io.h>
+#include <arch/io.h>
 #include <drivers/console.h>
 
 static int posX = 0;

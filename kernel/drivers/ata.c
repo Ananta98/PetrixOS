@@ -1,87 +1,104 @@
 #include <lib/kstdio.h>
 #include <drivers/ata.h>
-#include <arch/x86/cpu/io.h>
-#include <arch/x86/device/pic.h>
-#include <arch/x86/cpu/interrupt.h>
+#include <arch/io.h>
+#include <arch/pic.h>
+#include <arch/interrupt.h>
 
-static uint8_t read_status(uint16_t port_base) {
-    inb(port_base + COMMAND_STATUS);
-    inb(port_base + COMMAND_STATUS);
-    inb(port_base + COMMAND_STATUS);
-    inb(port_base + COMMAND_STATUS);
-    return inb(port_base + COMMAND_STATUS);
-}
-
-static void poll(uint16_t port_base) {
-    uint8_t status;
-    do
-        status = read_status(port_base);
-    while ((status & BSY) != 0);
-}
-
-void check_drive(uint16_t port_base, uint8_t master_or_slave) {
-    outb(port_base + SECTOR_COUNT, 0);
-    outb(port_base + LBA_LOW,      0);
-    outb(port_base + LBA_MID,      0);
-    outb(port_base + LBA_HIGH,     0);
-    
-    outb(port_base + COMMAND_STATUS, IDENTIFY);
-    uint8_t status = read_status(port_base);
-
-    if (status == 0) {
-        kprintf("ATA not found\n");
+void identify(bool master,uint16_t port_base) {
+    outb(port_base + DEVICE_PORT,master ? 0xA0 : 0xB0);
+    outb(port_base + CONTROL_PORT, 0);
+    outb(port_base + DEVICE_PORT, 0xA0);
+    uint8_t status = inb(port_base + COMMAND_PORT);
+    if (status == 0xFF)
         return;
-    }
-
-    while ((status & BSY) != 0)
-        status = read_status(port_base);
-    
-    while((status & DRQ) == 0 && (status & BSY) == 0)
-        status = read_status(port_base);
-    
-    if ((status & ERR) != 0) {
-        kprintf("Something wrong with ATA drive\n");
-        return;
-    }
+    outb(port_base + DEVICE_PORT,master ? 0xA0 : 0xB0);
+    outb(port_base + SECTOR_COUNT,0);
+    outb(LBA_LOW,0);
+    outb(LBA_MID,0);
+    outb(LBA_HIGH,0);
+    outb(COMMAND_PORT,0xEC);
+    ata_poll(port_base);
 }
 
-void ata_read_sector(uint16_t port_base, uint8_t master_or_slave, uint32_t lba, uint8_t sector_count, uint16_t buffer[]) {
-    outb(port_base + DRIVE_SELECT, master_or_slave | ((lba >> 24) & 0xF0000000));
-    outb(port_base + SECTOR_COUNT, (uint8_t)sector_count);
-    outb(port_base + LBA_LOW, (uint8_t)lba & 0xFF);
-    outb(port_base + LBA_MID, (uint8_t)(lba >> 8) & 0xFF);
-    outb(port_base + LBA_HIGH, (uint8_t)(lba >> 16) & 0xFF);
-    outb(port_base + COMMAND_STATUS, READ_SECTORS);
-    for (size_t i = 0; i < sector_count; i++) {
-        poll(port_base);
+void delay_400ns(uint16_t port_base) {
+    inb(port_base + ATA_REG_ALTSTATUS);
+    inb(port_base + ATA_REG_ALTSTATUS);
+    inb(port_base + ATA_REG_ALTSTATUS);
+    inb(port_base + ATA_REG_ALTSTATUS);
+}
+
+void ata_poll(uint16_t port_base) {
+    delay_400ns(port_base);
+    uint8_t status = inb(port_base + COMMAND_PORT);
+    if (status == 0x00)
+        return;
+    while (status & BSY)
+        status = inb(port_base + COMMAND_PORT);
+    if (status & ERR)
+        kprintf("ERROR\n");
+    while (status & DRQ)
+        status = inb(port_base + COMMAND_PORT);
+}
+
+void read_ata(uint16_t port_base,uint32_t sector_num, uint8_t *buffer, bool master) {
+    outb(port_base + DEVICE_PORT,master ? 0xE0 : 0xF0  | ((sector_num & 0x0F000000) >> 24));
+    outb(port_base + ERROR_PORT,0);
+    outb(SECTOR_COUNT,1);
+    outb(LBA_LOW,(uint8_t)(sector_num & 0x000000FF));
+    outb(LBA_MID,(uint8_t)(sector_num & 0x0000FF00) >> 8);
+    outb(LBA_HIGH,(uint8_t)(sector_num & 0x00FF0000) >> 16);
+    ata_poll(port_base);
+    for (int i = 0; i < 256; i++) {
         uint16_t data = inw(port_base);
         *(uint16_t*)(buffer + i * 2) = data;
     }
+    delay_400ns(port_base);
 }
 
-void primary_ata_handler() {
-    pic_ack(SECONDARY_ATA_IRQ);
-}
 
-void secondary_ata_handler() {
-    pic_ack(PRIMARY_ATA_IRQ);
-}
-
-void initialize_ata() {
-    uint8_t primary_status = inb(BASE_PRIMARY_ATA + COMMAND_STATUS);
-    uint8_t secondary_status = inb(BASE_SECONDARY_ATA + COMMAND_STATUS);
-
-    if ((primary_status == 0xFF) && (secondary_status == 0xFF)) {
-        kprintf("Error ATA What's Going on\n");
-        return;
+void write_ata(uint16_t port_base,uint32_t sector_num, uint8_t *buffer, bool master) {
+    outb(port_base + DEVICE_PORT,master ? 0xE0 : 0xF0  | ((sector_num & 0x0F000000) >> 24));
+    outb(SECTOR_COUNT,1);
+    outb(LBA_LOW,(uint8_t)sector_num & 0x000000FF );
+    outb(LBA_MID,(uint8_t)(sector_num & 0x0000FF00) >> 8);
+    outb(LBA_HIGH,(uint8_t)(sector_num & 0x00FF0000) >> 16);
+    outb(port_base + COMMAND_PORT, 0x30);
+    ata_poll(port_base);
+    for (int i = 0; i < 256; i++) {
+        uint16_t data = buffer[i];
+        outb(port_base,data);
     }
+    delay_400ns(port_base);
+    flush(port_base,master);
+}
 
-    check_drive(BASE_PRIMARY_ATA,   SEL_MASTER);
-    check_drive(BASE_PRIMARY_ATA,   SEL_SLAVE);
-    check_drive(BASE_SECONDARY_ATA, SEL_MASTER);
-    check_drive(BASE_SECONDARY_ATA, SEL_SLAVE);
+void flush(uint16_t port_base,bool master) {
+    outb(port_base + DEVICE_PORT,master ? 0xE0 : 0xF0);
+    outb(port_base + COMMAND_PORT,0xE7);
+    ata_poll(port_base);
+}
 
-    irq_install_handler(PRIMARY_ATA_IRQ,primary_ata_handler);
-    irq_install_handler(SECONDARY_ATA_IRQ,secondary_ata_handler);
+void handler_primary() {
+    pic_ack(IRQ_PRIMARY);
+}
 
+void handler_secondary() {
+    pic_ack(IRQ_SECONDARY);
+}
+
+void init_primary_ata() {
+    identify(true,PORT_BASE_PRIMARY);
+    identify(false,PORT_BASE_PRIMARY);
+}
+
+void init_secondary_ata() {
+    identify(true,PORT_BASE_SECONDARY);
+    identify(false,PORT_BASE_SECONDARY);
+}
+
+void ata_init() {
+    init_primary_ata();
+    init_secondary_ata();
+    irq_install_handler(IRQ_PRIMARY,handler_primary);
+    irq_install_handler(IRQ_SECONDARY,handler_secondary);
 }

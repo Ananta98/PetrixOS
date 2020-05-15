@@ -1,14 +1,4 @@
-#include <lib/types.h>
-
-typedef struct list_node {
-    struct list_node *next;
-    struct list_node *prev;
-} list_node_t;
-
-typedef struct {
-    list_node_t *head;
-    list_node_t *tail;
-} list;
+#include <lib/list.h>
 
 void initialize_list(list *list) {
     list->head = 0;
@@ -35,7 +25,7 @@ void push_front(list *list, list_node_t *new_node)  {
         list->tail = new_node;
 }
 
-list_node_t *pop_front(list *list) {
+void *pop_front(list *list) {
     if (!list->head)
         return NULL; 
     list_node_t *head = list->head;
@@ -45,10 +35,10 @@ list_node_t *pop_front(list *list) {
     if (!list->head)
         list->tail = 0;
     head->next = head->prev = 0;
-    return head;
+    return (void*)head;
 }
 
-list_node_t *pop_tail(list *list) {
+void *pop_tail(list *list) {
     if (!list->head)
         return NULL;
     list_node_t *tail = list->tail;
@@ -58,5 +48,5 @@ list_node_t *pop_tail(list *list) {
     if (!list->tail)
         list->head = 0;
     tail->next = tail->prev = 0;
-    return tail;
+    return (void*)tail;
 }

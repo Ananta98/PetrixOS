@@ -3,32 +3,29 @@ GCC = i686-elf-gcc
 ASM = nasm -felf32
 GCCLINKING = -ffreestanding -O2 -nostdlib
 
-KERNEL_OBJS = $(patsubst %.asm,%.o,$(wildcard kernel/arch/x86/boot/*.asm))
-KERNEL_OBJS += $(patsubst %.c,%.o,$(wildcard kernel/arch/x86/boot/*.c))
-KERNEL_OBJS += $(patsubst %.asm,%.o,$(wildcard kernel/arch/x86/cpu/*.asm))
-KERNEL_OBJS += $(patsubst %.c,%.o,$(wildcard kernel/arch/x86/mm/*.c))
-KERNEL_OBJS += $(patsubst %.c,%.o,$(wildcard kernel/arch/x86/cpu/*.c))
-KERNEL_OBJS += $(patsubst %.c,%.o,$(wildcard kernel/arch/x86/device/*.c))
+KERNEL_OBJS = $(patsubst %.c,%.o,$(wildcard kernel/boot/*.c))
+KERNEL_OBJS += $(patsubst %.asm,%.o,$(wildcard kernel/boot/*.asm))
+KERNEL_OBJS += $(patsubst %.asm,%.o,$(wildcard kernel/arch/*.asm))
+KERNEL_OBJS += $(patsubst %.c,%.o,$(wildcard kernel/arch/*.c))
 KERNEL_OBJS += $(patsubst %.c,%.o,$(wildcard kernel/mm/*.c))
 KERNEL_OBJS += $(patsubst %.c,%.o,$(wildcard kernel/lib/*.c))
 KERNEL_OBJS += $(patsubst %.c,%.o,$(wildcard kernel/drivers/*.c))
+KERNEL_OBJS += $(patsubst %.c,%.o,$(wildcard kernel/mm/*.c))
+KERNEL_OBJS += $(patsubst %.c,%.o,$(wildcard kernel/proc/*.c))
 
-kernel/%.o : kernel/%.c
+kernel/boot/%.o : kernel/boot/%.c
 	$(GCC) -c $< -o $@ $(GCCPARAMS)
 
-kernel/arch/x86/boot/%.o : kernel/arch/x86/boot/%.asm
+kernel/boot/%.o : kernel/boot/%.asm
 	$(ASM) $< -o $@
 
-kernel/arch/x86/boot/%.o : kernel/arch/x86/boot/%.c
+kernel/arch/%.o : kernel/arch/%.c
 	$(GCC) -c $< -o $@ $(GCCPARAMS)
 
-kernel/arch/x86/cpu/%.o : kernel/arch/x86/cpu/%.asm
+kernel/arch/%.o : kernel/arch/%.asm
 	$(ASM) $< -o $@
 
-kernel/arch/x86/device/%.o : kernel/arch/x86/device/%.c
-	$(GCC) -c $< -o $@ $(GCCPARAMS)
-
-kernel/arch/x86/mm/%.o : kernel/arch/x86/mm/%.c
+kernel/arch%.o : kernel/%.c
 	$(GCC) -c $< -o $@ $(GCCPARAMS)
 
  kernel/lib/%.o :  kernel/lib/%.c
@@ -37,7 +34,14 @@ kernel/arch/x86/mm/%.o : kernel/arch/x86/mm/%.c
 kernel/drivers/%.o : kernel/drivers/%.c
 	$(GCC) -c $< -o $@ $(GCCPARAMS)
 
-PetrixOS.bin: kernel/arch/x86/boot/linker.ld  $(KERNEL_OBJS)
+kernel/proc/%.o : kernel/proc/%.c
+	$(GCC) -c $< -o $@ $(GCCPARAMS)
+
+kernel/mm/%.o : kernel/mm/%.c
+	$(GCC) -c $< -o $@ $(GCCPARAMS)
+
+
+PetrixOS.bin: kernel/boot/linker.ld  $(KERNEL_OBJS)
 	$(GCC) -T $< -o $@ $(GCCLINKING) $(KERNEL_OBJS)
 
 PetrixOS.iso: PetrixOS.bin
@@ -56,12 +60,11 @@ run:
 	qemu-system-i386 -cdrom PetrixOS.iso	
 
 clean:
-	rm kernel/arch/x86/boot/*\.o
-	rm kernel/arch/x86/cpu/*\.o
-	rm kernel/arch/x86/device/*\.o
-	rm kernel/arch/x86/mm/*\.o
-	rm kernel/drivers/*\.o
+	# rm *\.iso
+	# rm *\.bin
+	rm kernel/boot/*\.o
+	rm kernel/arch/*\.o
 	rm kernel/mm/*\.o
 	rm kernel/lib/*\.o
-	rm *\.iso
-	rm *\.bin
+	rm kernel/drivers/*\.o
+	rm kernel/proc/*\.o
